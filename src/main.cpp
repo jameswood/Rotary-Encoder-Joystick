@@ -8,14 +8,14 @@
 #define SWITCHES 20
 #define KNOBPOSITIONS 5
 #define BUTTONS 12
-#define BOUNCEINTERVAL 25
 #define PRESSDURATION 50
 #define RELEASEDURATION 25
+#define BOUNCEINTERVAL PRESSDURATION
 #define SWITCHBUTTONS 2 * SWITCHES
 #define ENCODERBUTTONS 2 * ENCODERS
 //button order: buttons, switches, encoders
-#define SWITCHVBUTTONOFFSET BUTTONS
-#define ENCODERVBUTTONOFFSET BUTTONS + SWITCHBUTTONS
+#define SWITCHBUTTONOFFSET BUTTONS
+#define ENCODERBUTTONOFFSET BUTTONS + SWITCHBUTTONS
 
 const int encoderPins[][2] = {{28,29},{30,31},{33,32},{35,34},{37,36}}; //data, clock
 const int buttonPins[] =     {2,3,4,5,6,7,8,38,40,42,44,46};
@@ -28,14 +28,16 @@ const long holdTime = 100;
 Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID, JOYSTICK_TYPE_GAMEPAD, BUTTONS + SWITCHBUTTONS + ENCODERBUTTONS, 1, false, false, false, false, false, false, false, false, false, false, false);
 Bounce * switches = new Bounce[SWITCHES];
 
-enum buttonStates {ready, requested, active, hold};
+// enum buttonStates {ready, requested, active, hold};
 
 struct vbuttonStatus {
-  buttonStates state = ready;
-  unsigned long activeTime = 0;
+  // buttonStates state = ready;
+  // unsigned long pressTime = 0;
+  unsigned long releaseTime = 0;
+  unsigned long freeTime = 0;
 };
 
-struct encoderStatus : vbuttonStatus {
+struct encoderStatus {
   long position = 0;
   long reportedPosition = 0;
 };
@@ -57,7 +59,7 @@ void setup() {
   for(int i = 0; i<SWITCHES; i++){
     switches[i].attach( switchPins[i], INPUT_PULLUP );
     switches[i].interval(BOUNCEINTERVAL);
-  }
+  };
   pinMode(analogSwitchPin, INPUT);
   Joystick.begin();
 };
@@ -69,68 +71,47 @@ void updateKnob(){
   Joystick.setHatSwitch(0, knobPosition);
 };
 
-void readSwitch(int switchNumber){
-    switches[switchNumber].update();
+void doSwitches(int switchNumber){
+  switches[switchNumber].update();
+  if (switches[switchNumber].changed()){
+    const uint8_t upButton = switchNumber + SWITCHBUTTONOFFSET;
+    const uint8_t downButton = upButton + SWITCHES;
     if (switches[switchNumber].rose()) {
-      vbuttonState[switchNumber].state = requested;            // start clock for hold
-    } else if (switches[switchNumber].fell()){
-      vbuttonState[switchNumber + SWITCHES].state = requested;
-    }
-  }
-  uint32_t buttonStateNow = 0;
-  for (int i=0; i < BUTTONS * 2; i++) {     // if button was activated within holdtime, set it as 1
-    if (millis() - pressedTime[i] < holdTime) bitWrite(buttonStateNow, i, 1);
-  }
-};
-
-void updateSwitch(int switchNumber){
-  const uint8_t downButton = switchNumber + SWITCHVBUTTONOFFSET;
-  const uint8_t upButton = downButton + 1;
-};
-
-void updateEncoder(int encoderNumber){
-  const uint8_t downButton = encoderNumber + ENCODERVBUTTONOFFSET;
-  const uint8_t upButton = downButton + 1;
-  if((vbuttonState[upButton].state == ready) && (encoderState[encoderNumber].position > encoderState[encoderNumber].reportedPosition)) {
-    vbuttonState[upButton].state = requested;
-    if (encoderState[encoderNumber].position - encoderState[encoderNumber].reportedPosition > MAXLAG){
-      encoderState[encoderNumber].reportedPosition = encoderState[encoderNumber].position - MAXLAG;
+      switchButtonState[upButton].releaseTime = millis() + PRESSDURATION;
+      switchButtonState[downButton].releaseTime = millis();
+      Joystick.pressButton(upButton);
     } else {
-      encoderState[encoderNumber].reportedPosition++;
-    }
-  }
-  if((vbuttonState[downButton].state == ready) && (encoderState[encoderNumber].reportedPosition > encoderState[encoderNumber].position)) {
-    vbuttonState[downButton].state = requested;
-    if (encoderState[encoderNumber].reportedPosition - encoderState[encoderNumber].position > MAXLAG){
-      encoderState[encoderNumber].reportedPosition = encoderState[encoderNumber].position + MAXLAG
-    } else {
-      encoderState[encoderNumber].reportedPosition--;
+      switchButtonState[downButton].releaseTime = millis() + PRESSDURATION;
+      switchButtonState[upButton].releaseTime = millis();
+      Joystick.pressButton(downButton);
     }
   }
 };
+
+void interpretEncoder(int encoderNumber){
+  const uint8_t downButton = encoderNumber + ENCODERBUTTONOFFSET;
+  const uint8_t upButton = downButton + 1;
+  encoderState[encoderNumber].position = encoder[encoderNumber].read() / 4;
+  if (encoderState[encoderNumber].position != encoderState[encoderNumber].reportedPosition){
+    if((encoderState[encoderNumber].position > encoderState[encoderNumber].reportedPosition) && (encoderButtonState[upButton].freeTime <= millis())) {
+      encoderButtonState[upButton].releaseTime = millis() + PRESSDURATION;
+      encoderButtonState[upButton].freeTime = encoderButtonState[upButton].releaseTime + RELEASEDURATION;
+      encoderButtonState[downButton].releaseTime = millis();
+      encoderButtonState[downButton].freeTime = millis() + RELEASEDURATION;
+      Joystick.pressButton(upButton);
+      encoderState[encoderNumber].reportedPosition ++;
+    } else if((encoderState[encoderNumber].position < encoderState[encoderNumber].reportedPosition) && (encoderButtonState[downButton].freeTime <= millis())) {
+      encoderButtonState[downButton].releaseTime = millis() + PRESSDURATION;
+      encoderButtonState[downButton].freeTime = encoderButtonState[downButton].releaseTime + RELEASEDURATION;
+      encoderButtonState[upButton].releaseTime = millis();
+      encoderButtonState[upButton].freeTime = millis() + RELEASEDURATION;
+      Joystick.pressButton(downButton);
+      encoderState[encoderNumber].reportedPosition --;
+    }
+  }
 };
 
-void performPresses(int vButtonNumber){
-  if(vbuttonState[vButtonNumber].state == requested) pushVButton(vButtonNumber);
-  if((vbuttonState[vButtonNumber].state == active) && (millis() - vbuttonState[vButtonNumber].activeTime > PRESSDURATION)) releaseVButton(vButtonNumber);
-  if((vbuttonState[vButtonNumber].state == hold) && (millis() - vbuttonState[vButtonNumber].activeTime > RELEASEDURATION)) vbuttonState[vButtonNumber].state = ready;
-};
-
-void pushVButton(int vButtonNumber){
-  vbuttonState[vButtonNumber].pressTime = millis();
-  vbuttonState[vButtonNumber].releaseTime = millis() + PRESSDURATION;
-  vbuttonState[vButtonNumber].nextAvailablePress = millis() + PRESSDURATION + RELEASEDURATION;
-  vbuttonState[vButtonNumber].state = active;
-  Joystick.pressButton(vButtonNumber);
-};
-
-void releaseVButton(int vButtonNumber){
-  vbuttonState[vButtonNumber].state = hold;
-  vbuttonState[vButtonNumber].activeTime = millis();
-  Joystick.releaseButton(vButtonNumber);
-};
-
-void loop() {
+void loop(){
   //button order: buttons, switches, encoders
   static uint8_t switchNumber = 0;
   static uint8_t buttonNumber = 0;
@@ -140,11 +121,11 @@ void loop() {
   updateKnob();
   digitalRead(buttonPins[buttonNumber]) ? Joystick.releaseButton(buttonNumber) : Joystick.pressButton(buttonNumber);
 
-  readSwitch(switchNumber);
-  updateSwitch(switchNumber);
+  doSwitches(switchNumber);
+  interpretEncoder(encoderNumber);
 
-  encoderState[encoderNumber].position = encoder[encoderNumber].read() / 4;
-  updateEncoder(encoderNumber);
+  if (switchButtonState[switchButtonNumber].releaseTime <= millis()) Joystick.releaseButton(switchButtonNumber);
+  if (encoderButtonState[encoderButtonNumber].releaseTime <= millis()) Joystick.releaseButton(encoderButtonNumber);
 
   buttonNumber == BUTTONS-1 ? buttonNumber = 0 : buttonNumber++;
   switchNumber == SWITCHES-1 ? switchNumber = 0 : switchNumber++;
