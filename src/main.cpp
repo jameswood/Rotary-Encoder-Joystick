@@ -5,7 +5,7 @@
 
 #define MAXLAG 5
 #define ENCODERS 5
-#define SWITCHES 20
+#define SWITCHES 15 // max 16 (32 overall)
 #define KNOBPOSITIONS 5
 #define BUTTONS 12
 #define PRESSDURATION 40
@@ -14,9 +14,9 @@
 #define SWITCHBUTTONS 2 * SWITCHES
 #define ENCODERBUTTONS 2 * ENCODERS
 
-const int encoderPins[][2] = {{28,29},{31,30},{33,32},{35,34},{37,36}}; //data, clock (swap #1 because it sucks)
-const int buttonPins[] =     {2,3,4,5,6,7,8,38,40,42,44,46};
-const int switchPins[] =     {1,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27};
+const int encoderPins[ENCODERS][2] = {{28,29},{31,30},{33,32},{35,34},{37,36}}; //data, clock (swap #1 because it sucks)
+const int buttonPins[BUTTONS] =     {2,3,4,5,6,7,8,38,40,42,44,46};
+const int switchPins[SWITCHES] =     {9,10,11,12,13,14,15,16,17,18,19,20,21,22,23};
 const int analogSwitchPin =  A0;
 
 const long speedLimit = 10;
