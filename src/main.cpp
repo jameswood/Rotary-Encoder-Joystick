@@ -4,143 +4,148 @@
 #include <Bounce2.h>
 
 #define MAXLAG 5
-#define ENCODERS 5
-#define SWITCHES 15 // max 16 (32 overall)
-#define KNOBPOSITIONS 5
-#define BUTTONS 12
-#define PRESSDURATION 40
-#define RELEASEDURATION 20
-#define BOUNCEINTERVAL PRESSDURATION
-#define SWITCHBUTTONS 2 * SWITCHES
-#define ENCODERBUTTONS 2 * ENCODERS
+#define ENCS 5
+#define SWTS 15 // max 16 (32 overall)
+#define KNBPOSS 5
+#define BUTS 12
+#define PRSDUR 40
+#define RLSDUR 20
+#define BNCINT PRSDUR
+#define SWTBUTS 2 * SWTS
+#define ENCBUTS 2 * ENCS
 
-const int encoderPins[ENCODERS][2] = {{28,29},{31,30},{33,32},{35,34},{37,36}}; //data, clock (swap #1 because it sucks)
-const int buttonPins[BUTTONS] =     {2,3,4,5,6,7,8,38,40,42,44,46};
-const int switchPins[SWITCHES] =     {9,10,11,12,13,14,15,16,17,18,19,20,21,22,23};
-const int analogSwitchPin =  A0;
+const int encPins[ENCS][2]={{28,29},{31,30},{33,32},{35,34},{37,36}}; //data, clock (swap #1 because it sucks)
+const int swtPins[SWTS] =  {9,10,11,12,13,14,15,16,17,18,19,20,21,22,23};
+const int butPins[BUTS] =   {2,3,4,5,6,7,8,38,40,42,44,46};
+const int knbPin = A0;
 
-const long speedLimit = 10;
-const long holdTime = 100;
+Joystick_ joyBut(0x03, JOYSTICK_TYPE_GAMEPAD, BUTS + KNBPOSS, 0, false, false, false, false, false, false, false, false, false, false, false);
+Joystick_ joySwt(0x04, JOYSTICK_TYPE_GAMEPAD, SWTBUTS, 0, false, false, false, false, false, false, false, false, false, false, false);
+Joystick_ joyEnc(0x05, JOYSTICK_TYPE_GAMEPAD, ENCBUTS, 0, false, false, false, false, false, false, false, false, false, false, false);
 
-Joystick_ JoystickButtons(0x03, JOYSTICK_TYPE_GAMEPAD, BUTTONS, 1, false, false, false, false, false, false, false, false, false, false, false);
-Joystick_ JoystickSwitches(0x04, JOYSTICK_TYPE_GAMEPAD, SWITCHBUTTONS, 0, false, false, false, false, false, false, false, false, false, false, false);
-Joystick_ JoystickEncoders(0x05, JOYSTICK_TYPE_GAMEPAD, ENCODERBUTTONS, 0, false, false, false, false, false, false, false, false, false, false, false);
-
-Bounce * switches = new Bounce[SWITCHES];
+Bounce * switches = new Bounce[SWTS];
 
 struct vbuttonStatus {
-  unsigned long releaseTime = 0;
+  unsigned long relTime = 0;
   unsigned long freeTime = 0;
+  void update(){
+    relTime = millis() + PRSDUR;
+    freeTime = relTime + RLSDUR;
+  };
+};
+
+struct knobStatus : vbuttonStatus {
+  uint8_t selected = 0;
 };
 
 struct encoderStatus {
-  long position = 0;
-  long reportedPosition = 0;
+  long pos = 0;
+  long repPos = 0;
 };
 
-encoderStatus encoderState[ENCODERS];
-vbuttonStatus switchButtonState[SWITCHBUTTONS];
-vbuttonStatus encoderButtonState[SWITCHBUTTONS];
+encoderStatus encStat[ENCS];
+vbuttonStatus swtButStat[SWTBUTS];
+vbuttonStatus encButStat[SWTBUTS];
+knobStatus knbStat;
 
-Encoder encoder[ENCODERS] = {
-  Encoder(encoderPins[0][1], encoderPins[0][0]),
-  Encoder(encoderPins[1][1], encoderPins[1][0]),
-  Encoder(encoderPins[2][1], encoderPins[2][0]),
-  Encoder(encoderPins[3][1], encoderPins[3][0]),
-  Encoder(encoderPins[4][1], encoderPins[4][0])
+Encoder encoder[ENCS] = {
+  Encoder(encPins[0][1], encPins[0][0]),
+  Encoder(encPins[1][1], encPins[1][0]),
+  Encoder(encPins[2][1], encPins[2][0]),
+  Encoder(encPins[3][1], encPins[3][0]),
+  Encoder(encPins[4][1], encPins[4][0])
 };
 
 void setup() {
-  for(int i = 0; i<BUTTONS; i++) pinMode(buttonPins[i], INPUT_PULLUP);
-  for(int i = 0; i<SWITCHES; i++){
-    switches[i].attach( switchPins[i], INPUT_PULLUP );
-    switches[i].interval(BOUNCEINTERVAL);
+  for(int i = 0; i<BUTS; i++) pinMode(butPins[i], INPUT_PULLUP);
+  for(int i = 0; i<SWTS; i++){
+    switches[i].attach( swtPins[i], INPUT_PULLUP );
+    switches[i].interval(BNCINT);
   };
-  pinMode(analogSwitchPin, INPUT);
-  JoystickButtons.begin();
-  JoystickSwitches.begin();
-  JoystickEncoders.begin();
+  pinMode(knbPin, INPUT);
+  joyBut.begin();
+  joySwt.begin();
+  joyEnc.begin();
 };
 
-void updateKnob(){
-  int8_t knobPosition = analogRead(analogSwitchPin) / 205;
-  knobPosition--;
-  if (knobPosition > -1) knobPosition = knobPosition * 90;
-  JoystickButtons.setHatSwitch(0, knobPosition);
+void doKnb(){
+  const int8_t knbPos = analogRead(knbPin) / 205;
+  if ( knbPos != knbStat.selected ) {
+    joyBut.releaseButton(knbStat.selected + BUTS);
+    knbStat.update();
+    joyBut.pressButton(knbPos + BUTS);
+    knbStat.selected = knbPos;
+  }
 };
 
-void doSwitches(int switchNumber){
-  switches[switchNumber].update();
-  if (switches[switchNumber].changed()){
-    const uint8_t upButton = switchNumber;
-    const uint8_t downButton = upButton + SWITCHES;
-    if (switches[switchNumber].rose()) {
-      switchButtonState[upButton].releaseTime = millis() + PRESSDURATION;
-      switchButtonState[downButton].releaseTime = millis();
-      JoystickSwitches.pressButton(upButton);
+void doSwt(const int swtNum){
+  switches[swtNum].update();
+  if (switches[swtNum].changed()){
+    const uint8_t upBut = swtNum * 2;
+    const uint8_t dnBut = upBut + 1;
+    if (switches[swtNum].rose()) {
+      swtButStat[upBut].update();
+      joySwt.pressButton(upBut);
     } else {
-      switchButtonState[downButton].releaseTime = millis() + PRESSDURATION;
-      switchButtonState[upButton].releaseTime = millis();
-      JoystickSwitches.pressButton(downButton);
+      swtButStat[dnBut].update();
+      joySwt.pressButton(dnBut);
     }
   }
 };
 
-void interpretEncoder(int encoderNumber){
-  const uint8_t downButton = encoderNumber * 2;
-  const uint8_t upButton = downButton + 1;
-  encoderState[encoderNumber].position = encoder[encoderNumber].read() / 4;
-  if (encoderState[encoderNumber].position != encoderState[encoderNumber].reportedPosition) {
-    if (encoderState[encoderNumber].position > encoderState[encoderNumber].reportedPosition) {
-      if (encoderButtonState[upButton].freeTime <= millis()) {
-        encoderButtonState[upButton].releaseTime = millis() + PRESSDURATION;
-        encoderButtonState[upButton].freeTime = encoderButtonState[upButton].releaseTime + RELEASEDURATION;
-        encoderButtonState[downButton].releaseTime = millis();
-        encoderButtonState[downButton].freeTime = millis() + RELEASEDURATION;
-        JoystickEncoders.pressButton(upButton);
-        encoderState[encoderNumber].reportedPosition ++;
+void doEnc(const int encNum){
+  const uint8_t dnBut = encNum * 2;
+  const uint8_t upBut = dnBut + 1;
+  encStat[encNum].pos = encoder[encNum].read() / 4;
+  if (encStat[encNum].pos != encStat[encNum].repPos) {
+    if (encStat[encNum].pos > encStat[encNum].repPos) {
+      if (encButStat[upBut].freeTime <= millis()) {
+        encButStat[upBut].update();
+        joyEnc.pressButton(upBut);
+        encStat[encNum].repPos++;
       }
-      if (encoderState[encoderNumber].position - encoderState[encoderNumber].reportedPosition > MAXLAG) {
-        encoderState[encoderNumber].reportedPosition += MAXLAG;
+      if (encStat[encNum].pos - encStat[encNum].repPos > MAXLAG) {
+        encStat[encNum].repPos += MAXLAG;
       }
-    } else if (encoderState[encoderNumber].position < encoderState[encoderNumber].reportedPosition) {
-      if (encoderButtonState[downButton].freeTime <= millis()) {
-        encoderButtonState[downButton].releaseTime = millis() + PRESSDURATION;
-        encoderButtonState[downButton].freeTime = encoderButtonState[downButton].releaseTime + RELEASEDURATION;
-        encoderButtonState[upButton].releaseTime = millis();
-        encoderButtonState[upButton].freeTime = millis() + RELEASEDURATION;
-        JoystickEncoders.pressButton(downButton);
-        encoderState[encoderNumber].reportedPosition --;
+    } else {
+      if (encButStat[dnBut].freeTime <= millis()) {
+        encButStat[dnBut].update();
+        joyEnc.pressButton(dnBut);
+        encStat[encNum].repPos--;
       }
-      if (encoderState[encoderNumber].reportedPosition - encoderState[encoderNumber].position > MAXLAG) {
-        encoderState[encoderNumber].reportedPosition -= MAXLAG;
+      if (encStat[encNum].repPos - encStat[encNum].pos > MAXLAG) {
+        encStat[encNum].repPos -= MAXLAG;
       }
     }
   }
 };
 
 void loop(){
-  //button order: buttons, switches, encoders
-  static uint8_t switchNumber = 0;
-  static uint8_t buttonNumber = 0;
-  static uint8_t encoderNumber = 0;
-  static uint8_t switchButtonNumber = 0;
-  static uint8_t encoderButtonNumber = 0;
-  updateKnob();
-  digitalRead(buttonPins[buttonNumber]) ? JoystickButtons.releaseButton(buttonNumber) : JoystickButtons.pressButton(buttonNumber);
+  static uint8_t knbPos = 0;
+  static uint8_t swtNum = 0;
+  static uint8_t butNum = 0;
+  static uint8_t encNum = 0;
+  static uint8_t swtButNum = 0;
+  static uint8_t encButNum = 0;
 
-  doSwitches(switchNumber);
-  interpretEncoder(encoderNumber);
+  if (knbStat.freeTime <= millis()) doKnb();
+  digitalRead(butPins[butNum]) ? joyBut.releaseButton(butNum) : joyBut.pressButton(butNum);
 
-  if (switchButtonState[switchButtonNumber].releaseTime <= millis()) JoystickSwitches.releaseButton(switchButtonNumber);
-  if (encoderButtonState[encoderButtonNumber].releaseTime <= millis()) JoystickEncoders.releaseButton(encoderButtonNumber);
+  doSwt(swtNum);
+  doEnc(encNum);
 
-  buttonNumber == BUTTONS-1 ? buttonNumber = 0 : buttonNumber++;
-  switchNumber == SWITCHES-1 ? switchNumber = 0 : switchNumber++;
-  encoderNumber == ENCODERS-1 ? encoderNumber = 0 : encoderNumber++;
-  switchButtonNumber == SWITCHBUTTONS-1 ? switchButtonNumber = 0 : switchButtonNumber++;
-  encoderButtonNumber == ENCODERBUTTONS-1 ? encoderButtonNumber = 0 : encoderButtonNumber++;
-  JoystickButtons.sendState();
-  JoystickSwitches.sendState();
-  JoystickEncoders.sendState();
+  if (swtButStat[swtButNum].relTime <= millis()) joySwt.releaseButton(swtButNum);
+  if (encButStat[encButNum].relTime <= millis()) joyEnc.releaseButton(encButNum);
+  if (knbStat.relTime <= millis()) joyBut.releaseButton(knbPos + BUTS);
+  
+  butNum == BUTS-1 ? butNum = 0 : butNum++;
+  swtNum == SWTS-1 ? swtNum = 0 : swtNum++;
+  encNum == ENCS-1 ? encNum = 0 : encNum++;
+  knbPos == KNBPOSS-1 ? knbPos = 0 : knbPos++;
+  swtButNum == SWTBUTS-1 ? swtButNum = 0 : swtButNum++;
+  encButNum == ENCBUTS-1 ? encButNum = 0 : encButNum++;
+
+  joyBut.sendState();
+  joySwt.sendState();
+  joyEnc.sendState();
 };
