@@ -124,8 +124,8 @@ void loop(){
   doSwitches(switchNumber);
   interpretEncoder(encoderNumber);
 
-  if (switchButtonState[switchButtonNumber].releaseTime <= millis()) Joystick.releaseButton(switchButtonNumber);
-  if (encoderButtonState[encoderButtonNumber].releaseTime <= millis()) Joystick.releaseButton(encoderButtonNumber);
+  if (switchButtonState[switchButtonNumber].releaseTime <= millis()) Joystick.releaseButton(switchButtonNumber + SWITCHBUTTONOFFSET);
+  if (encoderButtonState[encoderButtonNumber].releaseTime <= millis()) Joystick.releaseButton(encoderButtonNumber + ENCODERBUTTONOFFSET);
 
   buttonNumber == BUTTONS-1 ? buttonNumber = 0 : buttonNumber++;
   switchNumber == SWITCHES-1 ? switchNumber = 0 : switchNumber++;
