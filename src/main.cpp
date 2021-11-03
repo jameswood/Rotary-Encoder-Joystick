@@ -14,9 +14,9 @@
 #define SWTBUTS 2 * SWTS
 #define ENCBUTS 2 * ENCS
 
-const int encPins[ENCS][2]={{28,29},{31,30},{33,32},{35,34},{37,36}}; //data, clock (swap #1 because it sucks)
-const int swtPins[SWTS] =  {9,10,11,12,13,14,15,16,17,18,19,20,21,22,23};
-const int butPins[BUTS] =   {2,3,4,5,6,7,8,38,40,42,44,46};
+const int encPins[ENCS][2]={{45,44},{46,47},{48,49},{50,51},{52,53}}; //data, clock (swap #1 because it sucks)
+const int swtPins[SWTS] =  {17,18,19,20,21,22,23,24,25,26,27,28,29,30,31};
+const int butPins[BUTS] =  {33,32,34,35,36,37,38,39,40,41,42,43};
 const int knbPin = A0;
 
 Joystick_ joyBut(0x03, JOYSTICK_TYPE_GAMEPAD, BUTS + KNBPOSS, 0, false, false, false, false, false, false, false, false, false, false, false);
@@ -49,11 +49,11 @@ vbuttonStatus encButStat[SWTBUTS];
 knobStatus knbStat;
 
 Encoder encoder[ENCS] = {
-  Encoder(encPins[0][1], encPins[0][0]),
-  Encoder(encPins[1][1], encPins[1][0]),
-  Encoder(encPins[2][1], encPins[2][0]),
-  Encoder(encPins[3][1], encPins[3][0]),
-  Encoder(encPins[4][1], encPins[4][0])
+  Encoder(encPins[0][0], encPins[0][1]),
+  Encoder(encPins[1][0], encPins[1][1]),
+  Encoder(encPins[2][0], encPins[2][1]),
+  Encoder(encPins[3][0], encPins[3][1]),
+  Encoder(encPins[4][0], encPins[4][1])
 };
 
 void setup() {
